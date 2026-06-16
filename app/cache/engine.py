@@ -31,7 +31,7 @@ class SemanticCache:
         threshold: float,
         default_ttl: int,
     ) -> None:
-        self._embedder = embedder
+        self.embedder = embedder
         self._store = store
         self._threshold = threshold
         self._default_ttl = default_ttl
@@ -42,13 +42,23 @@ class SemanticCache:
         system_prompt: str | None,
         params: dict | None,
         user_prompt: str,
+        threshold: float | None = None,
     ) -> QueryResult:
         namespace = cache_namespace(model, system_prompt, params)
-        vector = self._embedder.embed(user_prompt)
+        vector = self.embedder.embed(user_prompt)
         hit = self._store.search(namespace, vector, k=1)
-        if hit is not None and hit.similarity >= self._threshold:
+        limit = self._threshold if threshold is None else threshold
+        if hit is not None and hit.similarity >= limit:
             return QueryResult(namespace, vector, hit)
         return QueryResult(namespace, vector, None)
+
+    def lookup(self, namespace: str, vector: list[float], threshold: float | None = None):
+        """Re-check the cache with an already-computed vector (no re-embedding)."""
+        hit = self._store.search(namespace, vector, k=1)
+        limit = self._threshold if threshold is None else threshold
+        if hit is not None and hit.similarity >= limit:
+            return hit
+        return None
 
     def store(
         self,

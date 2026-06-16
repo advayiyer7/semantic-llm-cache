@@ -78,6 +78,50 @@ def test_streaming_miss_then_hit(store, embedder):
         assert provider.calls == 1  # cache hit — provider not called
 
 
+def test_high_temperature_bypasses_cache(store, embedder):
+    provider = FakeProvider()
+    body = {
+        "model": "llama3.2",
+        "messages": [{"role": "user", "content": "be creative"}],
+        "temperature": 0.9,
+    }
+    with TestClient(app) as client:
+        _wire(store, embedder, provider)
+        first = client.post("/v1/chat/completions", json=body)
+        assert first.headers["X-Cache"] == "BYPASS"
+        assert first.headers["X-Cache-Profile"] == "off"
+        client.post("/v1/chat/completions", json=body)
+        assert provider.calls == 2  # never cached
+
+
+def test_cache_profile_off_bypasses(store, embedder):
+    provider = FakeProvider()
+    body = {
+        "model": "llama3.2",
+        "messages": [{"role": "user", "content": "x"}],
+        "cache_profile": "off",
+    }
+    with TestClient(app) as client:
+        _wire(store, embedder, provider)
+        client.post("/v1/chat/completions", json=body)
+        client.post("/v1/chat/completions", json=body)
+        assert provider.calls == 2
+
+
+def test_invalid_cache_profile_returns_400(store, embedder):
+    with TestClient(app) as client:
+        _wire(store, embedder, FakeProvider())
+        resp = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "llama3.2",
+                "messages": [{"role": "user", "content": "x"}],
+                "cache_profile": "bogus",
+            },
+        )
+        assert resp.status_code == 400
+
+
 def test_unconfigured_provider_returns_503(store, embedder):
     provider = FakeProvider()
     with TestClient(app) as client:

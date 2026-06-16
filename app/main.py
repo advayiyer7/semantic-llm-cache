@@ -20,7 +20,9 @@ from app.cache.store import CacheStore
 from app.config import get_settings
 from app.providers.anthropic_provider import AnthropicProvider
 from app.providers.openai_compatible import OpenAICompatibleProvider
+from app.proxy.admin import admin_router
 from app.proxy.routes import router as proxy_router
+from app.proxy.singleflight import SingleFlight
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("semantic_cache")
@@ -47,6 +49,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.settings = settings
     app.state.providers = _build_providers(settings)
+    app.state.singleflight = SingleFlight()
     app.state.store = None
     app.state.cache = None
 
@@ -85,8 +88,9 @@ async def lifespan(app: FastAPI):
                 pass
 
 
-app = FastAPI(title="Semantic LLM Cache", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="Semantic LLM Cache", version="0.3.0", lifespan=lifespan)
 app.include_router(proxy_router)
+app.include_router(admin_router)
 
 
 @app.middleware("http")

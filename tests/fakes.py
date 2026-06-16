@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from typing import AsyncIterator
 
@@ -27,6 +28,25 @@ class FakeProvider:
         last = req.messages[-1].content
         for token in ("FAKE", ":", str(last)):
             yield token
+
+
+class SlowFakeProvider:
+    """Like FakeProvider but `complete` awaits a delay — opens a race window so
+    single-flight behaviour is observable under concurrency."""
+
+    def __init__(self, delay: float = 0.05) -> None:
+        self.delay = delay
+        self.calls = 0
+
+    async def complete(self, req: ChatCompletionRequest) -> dict:
+        self.calls += 1
+        await asyncio.sleep(self.delay)
+        return completion_response(req.model, f"FAKE:{req.messages[-1].content}")
+
+    async def stream(self, req: ChatCompletionRequest) -> AsyncIterator[str]:
+        self.calls += 1
+        await asyncio.sleep(self.delay)
+        yield f"FAKE:{req.messages[-1].content}"
 
 
 class FakeEmbedder:

@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # Cache policy
     similarity_threshold: float = 0.95
     default_ttl_seconds: int = 3600
+    short_ttl_seconds: int = 300       # time-sensitive / strict profile
+    long_ttl_seconds: int = 86400      # stable / relaxed profile
+    # Temperature bands that drive the inferred cache profile.
+    deterministic_temperature_max: float = 0.3   # at/below -> relaxed (looser match OK)
+    creative_temperature_min: float = 0.8        # at/above -> no caching
 
 
 @lru_cache

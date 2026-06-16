@@ -27,3 +27,7 @@ class ChatCompletionRequest(BaseModel):
     max_tokens: int | None = None
     stream: bool = False
     n: int | None = None
+
+    # Proxy extensions (stripped before forwarding to the provider).
+    cache_profile: str | None = None  # strict | balanced | relaxed | off
+    cache_ttl: int | None = Field(default=None, ge=1)

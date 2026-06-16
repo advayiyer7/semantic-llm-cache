@@ -29,7 +29,10 @@ class OpenAICompatibleProvider:
         await self._client.aclose()
 
     def _payload(self, req: ChatCompletionRequest, stream: bool) -> dict:
-        body = req.model_dump(exclude_none=True, exclude={"stream"})
+        # Drop proxy-only extension fields so they never reach the provider.
+        body = req.model_dump(
+            exclude_none=True, exclude={"stream", "cache_profile", "cache_ttl"}
+        )
         body["stream"] = stream
         return body
 

@@ -13,8 +13,8 @@ It mirrors the OpenAI API, so adopting it means changing one base URL.
 | 0 | Repo scaffold, Docker stack, health endpoints | ✅ done |
 | 1 | Cache index + similarity engine | ✅ done |
 | 2 | Drop-in proxy API (OpenAI contract, streaming, routing) | ✅ done |
-| 3 | Cache policies & eviction | ⬜ next |
-| 4 | Monitoring & analytics | ⬜ |
+| 3 | Cache policies & eviction | ✅ done |
+| 4 | Monitoring & analytics | ⬜ next |
 | 5 | Containerize & load test | ⬜ |
 | 6 | Portfolio polish | ⬜ |
 
@@ -38,9 +38,39 @@ client.chat.completions.create(
 )
 ```
 
-The response carries an `X-Cache: HIT|MISS` header. Streaming (`stream=True`) is
-supported on every path — cache hits replay instantly, misses stream live while
-buffering the full response to store.
+The response carries `X-Cache: HIT|MISS|BYPASS` and `X-Cache-Profile` headers.
+Streaming (`stream=True`) is supported on every path — cache hits replay
+instantly, misses stream live while buffering the full response to store.
+
+### Cache policy (per request)
+
+A policy picks the similarity threshold and TTL from temperature, or from an
+explicit `cache_profile`:
+
+| Profile | Threshold | TTL tier | Inferred when |
+|---------|-----------|----------|---------------|
+| `relaxed` | 0.90 | long | `temperature ≤ 0.3` (deterministic) |
+| `balanced` | 0.95 | default | otherwise |
+| `strict` | 0.98 | short | — (explicit only) |
+| `off` | — | — | `temperature ≥ 0.8` (creative) → not cached |
+
+Override per request with `"cache_profile": "strict"` and/or `"cache_ttl": 600`.
+Concurrent identical misses are collapsed by a single-flight lock so only one
+hits the provider.
+
+### Threshold tuning
+
+`POST /admin/threshold-tuner` with labeled pairs returns the hit-rate vs
+**precision** tradeoff across thresholds (and the F1-recommended threshold):
+
+```bash
+curl -s localhost:8000/admin/threshold-tuner -H 'Content-Type: application/json' -d '{
+  "pairs": [
+    {"query": "what is the capital of France", "candidate": "France capital city", "should_hit": true},
+    {"query": "what is the capital of France", "candidate": "weather in Paris",        "should_hit": false}
+  ]
+}'
+```
 
 ## Setup
 
