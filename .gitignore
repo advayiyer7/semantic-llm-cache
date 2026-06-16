@@ -1,0 +1,18 @@
+# Secrets — NEVER commit real keys
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# uv
+.uv/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
