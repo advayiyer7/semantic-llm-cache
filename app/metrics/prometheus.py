@@ -11,13 +11,30 @@ from __future__ import annotations
 import threading
 from collections import deque
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import (
+    GC_COLLECTOR,
+    PLATFORM_COLLECTOR,
+    PROCESS_COLLECTOR,
+    REGISTRY,
+    Counter,
+    Histogram,
+)
+
+# Don't expose Python/process internals (version, RSS, fds) — reduces the
+# fingerprinting surface of the scrape endpoint.
+for _collector in (GC_COLLECTOR, PLATFORM_COLLECTOR, PROCESS_COLLECTOR):
+    try:
+        REGISTRY.unregister(_collector)
+    except KeyError:
+        pass
 
 REQUESTS = Counter(
     "semantic_cache_requests_total",
     "Proxy chat-completion requests by cache result.",
     ["result"],
 )
+# NOTE: latency is recorded for non-streaming responses only — a streaming
+# response returns its generator immediately, before the body is produced.
 LATENCY = Histogram(
     "semantic_cache_request_latency_seconds",
     "Non-streaming request latency by cache result.",
@@ -26,7 +43,8 @@ LATENCY = Histogram(
 )
 SIMILARITY = Histogram(
     "semantic_cache_similarity",
-    "Top-1 similarity observed on cache lookups.",
+    "Top-1 similarity observed on cache lookups, by result.",
+    ["result"],
     buckets=(0, 0.5, 0.7, 0.8, 0.85, 0.9, 0.92, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99, 1.0),
 )
 COST_SAVED = Counter(
@@ -48,8 +66,8 @@ def record_request(result: str, latency_seconds: float | None = None) -> None:
         LATENCY.labels(result=result).observe(latency_seconds)
 
 
-def observe_similarity(similarity: float) -> None:
-    SIMILARITY.observe(similarity)
+def observe_similarity(similarity: float, result: str) -> None:
+    SIMILARITY.labels(result=result).observe(similarity)
 
 
 def record_cost_saved(usd: float) -> None:

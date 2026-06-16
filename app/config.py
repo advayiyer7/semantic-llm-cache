@@ -21,6 +21,8 @@ class Settings(BaseSettings):
 
     # Optional: when set, /admin/* endpoints require a matching X-Admin-Key header.
     admin_api_key: str | None = None
+    # Optional: when set, /metrics requires `Authorization: Bearer <token>`.
+    metrics_auth_token: str | None = None
 
     # Redis (vector store + cache)
     redis_url: str = "redis://localhost:6379"

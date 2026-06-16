@@ -64,15 +64,39 @@ def _split_messages(messages) -> tuple[str | None, str]:
     return ("\n".join(system_parts) or None), "\n".join(convo_parts)
 
 
-def _record_savings(conversation: str, content: str, settings) -> None:
+def _record_savings(system: str | None, conversation: str, content: str, settings) -> None:
+    prompt_text = f"{system or ''}\n{conversation}"
     record_cost_saved(
-        estimate_saved_usd(conversation, content, settings.estimated_price_per_1k_tokens)
+        estimate_saved_usd(prompt_text, content, settings.estimated_price_per_1k_tokens)
     )
+
+
+def _observe_lookup(cache_result, threshold: float) -> None:
+    """Record the similarity histogram and flag near-misses for one lookup."""
+    if cache_result is None or cache_result.top_similarity is None:
+        return
+    sim = cache_result.top_similarity
+    is_hit = cache_result.hit is not None
+    observe_similarity(sim, "hit" if is_hit else "miss")
+    # engine.query guarantees hit is None when sim < threshold; the upper bound
+    # is defensive belt-and-suspenders against future engine changes.
+    if not is_hit and threshold - _NEAR_MISS_BAND <= sim < threshold:
+        record_near_miss(cache_result.namespace, sim, threshold)
 
 
 def _flight_key(namespace: str, conversation: str) -> str:
     digest = hashlib.sha256(conversation.encode("utf-8")).hexdigest()[:32]
     return f"{namespace}:{digest}"
+
+
+def _serve_hit(req, content, base_headers, system, conversation, settings):
+    _record_savings(system, conversation, content, settings)
+    headers = {**base_headers, "X-Cache": "HIT"}
+    if req.stream:
+        return StreamingResponse(
+            _replay_stream(req.model, content), media_type="text/event-stream", headers=headers
+        )
+    return JSONResponse(completion_response(req.model, content), headers=headers)
 
 
 async def _safe_query(cache, model, system, params, conversation, threshold):
@@ -143,27 +167,10 @@ async def chat_completions(request: Request):
         cache_result = await _safe_query(
             cache, req.model, system, params, conversation, decision.threshold
         )
-        if cache_result is not None and cache_result.top_similarity is not None:
-            observe_similarity(cache_result.top_similarity)
-            if (
-                cache_result.hit is None
-                and cache_result.top_similarity >= decision.threshold - _NEAR_MISS_BAND
-            ):
-                record_near_miss(
-                    cache_result.namespace, cache_result.top_similarity, decision.threshold
-                )
+        _observe_lookup(cache_result, decision.threshold)
         if cache_result is not None and cache_result.hit is not None:
-            content = cache_result.hit.response
-            _record_savings(conversation, content, app.state.settings)
-            if req.stream:
-                return StreamingResponse(
-                    _replay_stream(req.model, content),
-                    media_type="text/event-stream",
-                    headers={**base_headers, "X-Cache": "HIT"},
-                )
-            return JSONResponse(
-                completion_response(req.model, content),
-                headers={**base_headers, "X-Cache": "HIT"},
+            return _serve_hit(
+                req, cache_result.hit.response, base_headers, system, conversation, app.state.settings
             )
 
     if req.stream:
@@ -184,17 +191,23 @@ async def chat_completions(request: Request):
         response = await _provider_complete(provider, req, key)
         return JSONResponse(response, headers={**base_headers, "X-Cache": "MISS"})
 
-    # Cacheable miss — collapse concurrent identical requests.
+    return await _handle_cacheable_miss(
+        request, provider, req, cache, cache_result, system, conversation, decision, base_headers, key
+    )
+
+
+async def _handle_cacheable_miss(
+    request, provider, req, cache, cache_result, system, conversation, decision, base_headers, key
+):
+    """A cacheable miss, collapsed under a single-flight lock."""
     flight = _flight_key(cache_result.namespace, conversation)
-    async with app.state.singleflight(flight):
+    async with request.app.state.singleflight(flight):
         recheck = await _safe_lookup(
             cache, cache_result.namespace, cache_result.vector, decision.threshold
         )
         if recheck is not None:
-            _record_savings(conversation, recheck.response, app.state.settings)
-            return JSONResponse(
-                completion_response(req.model, recheck.response),
-                headers={**base_headers, "X-Cache": "HIT"},
+            return _serve_hit(
+                req, recheck.response, base_headers, system, conversation, request.app.state.settings
             )
         response = await _provider_complete(provider, req, key)
         text = extract_text(response)

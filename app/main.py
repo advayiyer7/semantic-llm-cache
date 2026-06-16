@@ -52,6 +52,8 @@ def _build_providers(settings) -> dict:
 async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.settings = settings
+    if not settings.admin_api_key:
+        logger.warning("ADMIN_API_KEY not set — /admin/* endpoints are open to all callers.")
     app.state.providers = _build_providers(settings)
     app.state.singleflight = SingleFlight()
     app.state.store = None
@@ -121,7 +123,10 @@ async def record_metrics(request: Request, call_next):
 
 
 @app.get("/metrics")
-def metrics() -> Response:
+def metrics(request: Request) -> Response:
+    token = request.app.state.settings.metrics_auth_token
+    if token and request.headers.get("Authorization") != f"Bearer {token}":
+        return Response(status_code=401)
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
