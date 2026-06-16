@@ -12,8 +12,8 @@ It mirrors the OpenAI API, so adopting it means changing one base URL.
 |-------|-------|-------|
 | 0 | Repo scaffold, Docker stack, health endpoints | ✅ done |
 | 1 | Cache index + similarity engine | ✅ done |
-| 2 | Drop-in proxy API (OpenAI contract, streaming, routing) | ⬜ next |
-| 3 | Cache policies & eviction | ⬜ |
+| 2 | Drop-in proxy API (OpenAI contract, streaming, routing) | ✅ done |
+| 3 | Cache policies & eviction | ⬜ next |
 | 4 | Monitoring & analytics | ⬜ |
 | 5 | Containerize & load test | ⬜ |
 | 6 | Portfolio polish | ⬜ |
@@ -24,6 +24,23 @@ See [PLAN.md](PLAN.md) for the full build plan.
 
 Python 3.11+ · FastAPI · OpenAI `text-embedding-3-small` · Redis Stack (RedisVL)
 · Prometheus + Grafana · Docker Compose. Dev/test chat provider: **Ollama** (free, local).
+
+## Proxy usage
+
+Point any OpenAI client at the proxy by changing the base URL:
+
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="not-needed-for-ollama")
+client.chat.completions.create(
+    model="llama3.2:3b",                     # → Ollama (local). gpt-* → OpenAI, claude-* → Anthropic
+    messages=[{"role": "user", "content": "hello"}],
+)
+```
+
+The response carries an `X-Cache: HIT|MISS` header. Streaming (`stream=True`) is
+supported on every path — cache hits replay instantly, misses stream live while
+buffering the full response to store.
 
 ## Setup
 

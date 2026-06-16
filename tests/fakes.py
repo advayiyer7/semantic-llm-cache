@@ -3,8 +3,30 @@
 from __future__ import annotations
 
 import hashlib
+from typing import AsyncIterator
 
 import numpy as np
+
+from app.proxy.openai_format import completion_response
+from app.proxy.schemas import ChatCompletionRequest
+
+
+class FakeProvider:
+    """Records call count and echoes the last message — no network."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def complete(self, req: ChatCompletionRequest) -> dict:
+        self.calls += 1
+        last = req.messages[-1].content
+        return completion_response(req.model, f"FAKE:{last}")
+
+    async def stream(self, req: ChatCompletionRequest) -> AsyncIterator[str]:
+        self.calls += 1
+        last = req.messages[-1].content
+        for token in ("FAKE", ":", str(last)):
+            yield token
 
 
 class FakeEmbedder:
