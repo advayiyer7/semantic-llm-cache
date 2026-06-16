@@ -9,12 +9,16 @@ still works as a transparent passthrough.
 from __future__ import annotations
 
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from starlette.responses import StreamingResponse
 
 from app.cache.embedder import OpenAIEmbedder
+from app.metrics.prometheus import record_request
 from app.cache.engine import SemanticCache
 from app.cache.store import CacheStore
 from app.config import get_settings
@@ -99,6 +103,26 @@ async def limit_body_size(request: Request, call_next):
     if content_length and content_length.isdigit() and int(content_length) > MAX_BODY_BYTES:
         return JSONResponse({"detail": "Request body too large."}, status_code=413)
     return await call_next(request)
+
+
+@app.middleware("http")
+async def record_metrics(request: Request, call_next):
+    if request.url.path != "/v1/chat/completions":
+        return await call_next(request)
+    start = time.perf_counter()
+    response = await call_next(request)
+    label = response.headers.get("X-Cache")
+    if label:
+        # Latency is only meaningful for non-streaming responses (streaming
+        # returns the generator immediately, before the body is produced).
+        latency = None if isinstance(response, StreamingResponse) else time.perf_counter() - start
+        record_request(label.lower(), latency)
+    return response
+
+
+@app.get("/metrics")
+def metrics() -> Response:
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/health")

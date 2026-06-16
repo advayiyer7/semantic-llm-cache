@@ -13,6 +13,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.cache.tuner import cosine, sweep
+from app.metrics.prometheus import recent_near_misses
 
 admin_router = APIRouter()
 
@@ -67,3 +68,10 @@ async def threshold_tuner(
     rows = sweep(scored, thresholds)
     best = max(rows, key=lambda r: (r["f1"], r["threshold"])) if rows else None
     return {"results": rows, "recommended": best}
+
+
+@admin_router.get("/admin/near-misses")
+async def near_misses(request: Request, x_admin_key: str | None = Header(default=None)):
+    """Recent lookups that missed but landed just below the threshold."""
+    _require_admin(request, x_admin_key)
+    return {"near_misses": recent_near_misses()}

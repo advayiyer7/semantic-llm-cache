@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     short_ttl_seconds: int = 300       # time-sensitive / strict profile
     long_ttl_seconds: int = 86400      # stable / relaxed profile
     max_ttl_seconds: int = 604800      # hard ceiling for any caller TTL override (7d)
+    # Rough blended $/1k tokens, used only for the "estimated cost saved" metric.
+    estimated_price_per_1k_tokens: float = 0.002
     # Temperature bands that drive the inferred cache profile.
     deterministic_temperature_max: float = 0.3   # at/below -> relaxed (looser match OK)
     creative_temperature_min: float = 0.8        # at/above -> no caching

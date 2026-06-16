@@ -14,8 +14,8 @@ It mirrors the OpenAI API, so adopting it means changing one base URL.
 | 1 | Cache index + similarity engine | ✅ done |
 | 2 | Drop-in proxy API (OpenAI contract, streaming, routing) | ✅ done |
 | 3 | Cache policies & eviction | ✅ done |
-| 4 | Monitoring & analytics | ⬜ next |
-| 5 | Containerize & load test | ⬜ |
+| 4 | Monitoring & analytics | ✅ done |
+| 5 | Containerize & load test | ⬜ next |
 | 6 | Portfolio polish | ⬜ |
 
 See [PLAN.md](PLAN.md) for the full build plan.
@@ -57,6 +57,17 @@ explicit `cache_profile`:
 Override per request with `"cache_profile": "strict"` and/or `"cache_ttl": 600`.
 Concurrent identical misses are collapsed by a single-flight lock so only one
 hits the provider.
+
+### Monitoring
+
+`GET /metrics` exposes Prometheus series: `semantic_cache_requests_total{result}`,
+`semantic_cache_request_latency_seconds` (cached vs uncached), `semantic_cache_similarity`,
+`semantic_cache_cost_saved_usd_total`, and `semantic_cache_near_miss_total`. Prometheus
+scrapes it automatically and a Grafana dashboard (hit rate, P50/P95 latency by result,
+cost saved, similarity distribution, near-misses) is provisioned at **localhost:3000**.
+
+`GET /admin/near-misses` returns recent lookups that missed but landed just below
+the threshold — the near-miss analyzer that tells you whether to loosen it.
 
 ### Threshold tuning
 

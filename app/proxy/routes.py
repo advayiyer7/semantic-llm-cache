@@ -27,6 +27,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import ValidationError
 
 from app.cache.policy import VALID_PROFILES, decide
+from app.metrics.prometheus import (
+    estimate_saved_usd,
+    observe_similarity,
+    record_cost_saved,
+    record_near_miss,
+)
 from app.providers.router import provider_key_for_model
 from app.proxy.openai_format import (
     SSE_DONE,
@@ -43,6 +49,7 @@ logger = logging.getLogger("semantic_cache")
 router = APIRouter()
 
 _PROVIDER_ERRORS = (httpx.HTTPStatusError, httpx.RequestError, anthropic.APIError)
+_NEAR_MISS_BAND = 0.05  # a miss within this much of the threshold is a "near miss"
 
 
 def _split_messages(messages) -> tuple[str | None, str]:
@@ -55,6 +62,12 @@ def _split_messages(messages) -> tuple[str | None, str]:
         else:
             convo_parts.append(f"{message.role}: {content}")
     return ("\n".join(system_parts) or None), "\n".join(convo_parts)
+
+
+def _record_savings(conversation: str, content: str, settings) -> None:
+    record_cost_saved(
+        estimate_saved_usd(conversation, content, settings.estimated_price_per_1k_tokens)
+    )
 
 
 def _flight_key(namespace: str, conversation: str) -> str:
@@ -130,8 +143,18 @@ async def chat_completions(request: Request):
         cache_result = await _safe_query(
             cache, req.model, system, params, conversation, decision.threshold
         )
+        if cache_result is not None and cache_result.top_similarity is not None:
+            observe_similarity(cache_result.top_similarity)
+            if (
+                cache_result.hit is None
+                and cache_result.top_similarity >= decision.threshold - _NEAR_MISS_BAND
+            ):
+                record_near_miss(
+                    cache_result.namespace, cache_result.top_similarity, decision.threshold
+                )
         if cache_result is not None and cache_result.hit is not None:
             content = cache_result.hit.response
+            _record_savings(conversation, content, app.state.settings)
             if req.stream:
                 return StreamingResponse(
                     _replay_stream(req.model, content),
@@ -168,6 +191,7 @@ async def chat_completions(request: Request):
             cache, cache_result.namespace, cache_result.vector, decision.threshold
         )
         if recheck is not None:
+            _record_savings(conversation, recheck.response, app.state.settings)
             return JSONResponse(
                 completion_response(req.model, recheck.response),
                 headers={**base_headers, "X-Cache": "HIT"},
