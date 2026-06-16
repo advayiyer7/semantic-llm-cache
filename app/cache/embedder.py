@@ -11,6 +11,7 @@ never drift.
 
 from __future__ import annotations
 
+import threading
 from typing import Protocol, runtime_checkable
 
 from app.config import Settings
@@ -48,13 +49,18 @@ class OpenAIEmbedder:
 class LocalEmbedder:
     """On-device embeddings via fastembed (ONNX, CPU). No API key required."""
 
-    _DIMS = {"BAAI/bge-small-en-v1.5": 384}
-
     def __init__(self, model_name: str) -> None:
-        from fastembed import TextEmbedding
+        try:
+            from fastembed import TextEmbedding
+        except ImportError as exc:  # pragma: no cover - import-path guard
+            raise RuntimeError(
+                "fastembed is not installed — run: uv sync --group local"
+            ) from exc
 
         self._model = TextEmbedding(model_name=model_name)
-        self._dim = self._DIMS.get(model_name, 384)
+        self._lock = threading.Lock()  # fastembed inference isn't guaranteed thread-safe
+        # Discover the true output dimension rather than assuming it.
+        self._dim = len(next(self._model.embed(["probe"])).tolist())
 
     @property
     def dim(self) -> int:
@@ -62,12 +68,13 @@ class LocalEmbedder:
 
     def embed(self, text: str) -> list[float]:
         # fastembed yields one numpy vector per input string.
-        return next(self._model.embed([text])).tolist()
+        with self._lock:
+            return next(self._model.embed([text])).tolist()
 
 
 def build_embedder(settings: Settings) -> Embedder | None:
     """Return the configured embedder, or None when it can't be built."""
-    backend = settings.embedding_backend.lower()
+    backend = settings.embedding_backend.strip().lower()
     if backend == "local":
         return LocalEmbedder(settings.local_embedding_model)
     if backend == "openai":

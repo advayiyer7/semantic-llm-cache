@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import statistics
+import math
 import time
 
 import httpx
@@ -22,11 +22,12 @@ from loadtest.workload import build_workload, mix_counts
 
 
 def _pct(values: list[float], q: int) -> float:
+    """Nearest-rank percentile — robust for small/empty samples."""
     if not values:
         return 0.0
-    if len(values) == 1:
-        return values[0]
-    return statistics.quantiles(values, n=100)[q - 1]
+    ordered = sorted(values)
+    rank = max(0, min(len(ordered) - 1, math.ceil(q / 100 * len(ordered)) - 1))
+    return ordered[rank]
 
 
 async def _fire(client, prompt, model, max_tokens):
@@ -103,12 +104,20 @@ async def run(args) -> dict:
 
 async def _scrape_cost_saved(client) -> float:
     try:
-        text = (await client.get("/metrics")).text
-    except Exception:
+        resp = await client.get("/metrics")
+        if resp.status_code != 200:
+            print(f"WARNING: /metrics returned {resp.status_code}; cost_saved=0")
+            return 0.0
+        text = resp.text
+    except Exception as exc:  # noqa: BLE001 - dev tooling, never fatal
+        print(f"WARNING: /metrics scrape failed ({type(exc).__name__}); cost_saved=0")
         return 0.0
     for line in text.splitlines():
         if line.startswith("semantic_cache_cost_saved_usd_total "):
-            return float(line.split()[1])
+            try:
+                return float(line.split()[1])
+            except (ValueError, IndexError):
+                return 0.0
     return 0.0
 
 

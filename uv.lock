@@ -1354,7 +1354,7 @@ dev = [
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-asyncio", specifier = ">=0.23" },
 ]
-local = [{ name = "fastembed", specifier = ">=0.4" }]
+local = [{ name = "fastembed", specifier = ">=0.4,<1.0" }]
 
 [[package]]
 name = "shellingham"

@@ -25,7 +25,7 @@ dev = [
 ]
 # On-device embeddings (no API key, CPU). Install with: uv sync --group local
 local = [
-    "fastembed>=0.4",
+    "fastembed>=0.4,<1.0",
 ]
 
 [tool.uv]

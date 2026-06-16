@@ -81,6 +81,13 @@ _SUBJECTS = [
     "the Berlin Wall", "lactic acid", "hash functions", "the Louisiana Purchase",
     "diffusion", "the Bronze Age", "synaptic transmission", "quantitative easing",
     "refraction", "the Great Depression", "ribosomes",
+    "the Doppler shift", "amortization", "the Apollo program", "merge sort",
+    "the endocrine system", "containerization", "the bond market", "antigens",
+    "centripetal force", "the Ottoman Empire", "lactose intolerance", "hashing",
+    "the suffrage movement", "epigenetics", "the ozone hole", "yield curves",
+    "ultrasound", "the cotton gin", "glycolysis", "the Mongol Empire",
+    "superconductivity", "the abolition movement", "meiosis", "currency pegs",
+    "polarization", "the steam engine", "neurotransmitters", "the spice trade",
 ]
 
 
