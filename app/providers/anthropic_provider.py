@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from app.proxy.openai_format import completion_response
+from app.proxy.openai_format import completion_response, text_of
 from app.proxy.schemas import ChatCompletionRequest
 
 _DEFAULT_MAX_TOKENS = 1024
@@ -23,14 +23,6 @@ _STOP_REASON_MAP = {
     "stop_sequence": "stop",
     "tool_use": "tool_calls",
 }
-
-
-def _text(content) -> str:
-    if isinstance(content, list):
-        return "".join(
-            part.get("text", "") for part in content if isinstance(part, dict)
-        )
-    return content or ""
 
 
 def _rejects_sampling(model: str) -> bool:
@@ -47,7 +39,7 @@ class AnthropicProvider:
         system_parts: list[str] = []
         messages: list[dict] = []
         for message in req.messages:
-            content = _text(message.content)
+            content = text_of(message.content)
             if message.role == "system":
                 system_parts.append(content)
             else:
@@ -60,8 +52,11 @@ class AnthropicProvider:
         }
         if system_parts:
             kwargs["system"] = "\n".join(system_parts)
-        if req.temperature is not None and not _rejects_sampling(req.model):
-            kwargs["temperature"] = req.temperature
+        if not _rejects_sampling(req.model):
+            if req.temperature is not None:
+                kwargs["temperature"] = req.temperature
+            if req.top_p is not None:
+                kwargs["top_p"] = req.top_p
         return kwargs
 
     async def complete(self, req: ChatCompletionRequest) -> dict:

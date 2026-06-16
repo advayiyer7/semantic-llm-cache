@@ -13,7 +13,6 @@ from app.providers.router import provider_key_for_model
         ("gpt-4o", "openai"),
         ("gpt-4o-mini", "openai"),
         ("o3-mini", "openai"),
-        ("text-embedding-3-small", "openai"),
         ("claude-opus-4-8", "anthropic"),
         ("claude-sonnet-4-6", "anthropic"),
         ("llama3.2", "ollama"),

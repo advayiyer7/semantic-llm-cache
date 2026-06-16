@@ -11,7 +11,8 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 
 from app.cache.embedder import OpenAIEmbedder
 from app.cache.engine import SemanticCache
@@ -23,6 +24,9 @@ from app.proxy.routes import router as proxy_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("semantic_cache")
+
+# Reject oversized bodies before buffering them into memory.
+MAX_BODY_BYTES = 2_000_000
 
 
 def _build_providers(settings) -> dict:
@@ -67,13 +71,30 @@ async def lifespan(app: FastAPI):
         else:
             logger.warning("OPENAI_API_KEY not set — cache disabled (passthrough only)")
     except Exception as exc:  # noqa: BLE001 - startup must stay resilient
-        logger.warning("Cache store unavailable at startup: %s", exc)
+        # Log the type only — the exception text can contain the Redis URL/creds.
+        logger.warning("Cache store unavailable at startup: %s", type(exc).__name__)
 
     yield
+
+    for provider in app.state.providers.values():
+        aclose = getattr(provider, "aclose", None)
+        if aclose is not None:
+            try:
+                await aclose()
+            except Exception:  # noqa: BLE001
+                pass
 
 
 app = FastAPI(title="Semantic LLM Cache", version="0.2.0", lifespan=lifespan)
 app.include_router(proxy_router)
+
+
+@app.middleware("http")
+async def limit_body_size(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit() and int(content_length) > MAX_BODY_BYTES:
+        return JSONResponse({"detail": "Request body too large."}, status_code=413)
+    return await call_next(request)
 
 
 @app.get("/health")

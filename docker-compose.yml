@@ -1,8 +1,9 @@
 services:
   api:
     build: .
+    # Bind to localhost — front with a reverse proxy/auth before exposing publicly.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file:
       - path: .env
         required: false
@@ -17,26 +18,28 @@ services:
 
   redis:
     image: redis/redis-stack:latest
+    # Localhost-only: the cache holds prompts/responses in plaintext.
     ports:
-      - "6379:6379"   # Redis
-      - "8001:8001"   # RedisInsight UI
+      - "127.0.0.1:6379:6379"   # Redis
+      - "127.0.0.1:8001:8001"   # RedisInsight UI
     volumes:
       - redis-data:/data
 
   prometheus:
     image: prom/prometheus:latest
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
   grafana:
     image: grafana/grafana:latest
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      # Set GRAFANA_ADMIN_PASSWORD in .env; falls back to 'admin' for local dev only.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:

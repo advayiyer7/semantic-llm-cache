@@ -8,13 +8,18 @@ Cache flow per request:
      buffering the full text, then store it once the stream ends.
 
 Cache reads/writes embed via a (synchronous) network call, so they run in a
-worker thread to avoid blocking the event loop.
+worker thread to avoid blocking the event loop. Provider errors are sanitized to
+a 502 so upstream error bodies (which can echo key fragments) never reach the
+caller; cache failures degrade to a plain miss rather than failing the request.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 
+import anthropic
+import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import ValidationError
@@ -27,10 +32,14 @@ from app.proxy.openai_format import (
     extract_text,
     new_completion_id,
     sse,
+    text_of,
 )
 from app.proxy.schemas import ChatCompletionRequest
 
+logger = logging.getLogger("semantic_cache")
 router = APIRouter()
+
+_PROVIDER_ERRORS = (httpx.HTTPStatusError, httpx.RequestError, anthropic.APIError)
 
 
 def _split_messages(messages) -> tuple[str | None, str]:
@@ -38,12 +47,7 @@ def _split_messages(messages) -> tuple[str | None, str]:
     system_parts: list[str] = []
     convo_parts: list[str] = []
     for message in messages:
-        content = message.content
-        if isinstance(content, list):
-            content = "".join(
-                part.get("text", "") for part in content if isinstance(part, dict)
-            )
-        content = content or ""
+        content = text_of(message.content)
         if message.role == "system":
             system_parts.append(content)
         else:
@@ -52,13 +56,30 @@ def _split_messages(messages) -> tuple[str | None, str]:
     return system, "\n".join(convo_parts)
 
 
+async def _safe_query(cache, model, system, params, conversation):
+    try:
+        return await asyncio.to_thread(cache.query, model, system, params, conversation)
+    except Exception as exc:  # noqa: BLE001 - cache must never fail the request
+        logger.warning("cache.query failed (%s) — treating as miss", type(exc).__name__)
+        return None
+
+
+async def _safe_store(cache, namespace, vector, conversation, text):
+    try:
+        await asyncio.to_thread(cache.store, namespace, vector, conversation, text)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("cache.store failed (%s)", type(exc).__name__)
+
+
 @router.post("/v1/chat/completions")
 async def chat_completions(request: Request):
     body = await request.json()
     try:
         req = ChatCompletionRequest(**body)
     except ValidationError as exc:
-        raise HTTPException(status_code=400, detail=exc.errors())
+        # Strip Pydantic's doc URLs / echoed input; keep only location/message/type.
+        detail = [{"loc": e["loc"], "msg": e["msg"], "type": e["type"]} for e in exc.errors()]
+        raise HTTPException(status_code=400, detail=detail)
 
     providers = request.app.state.providers
     key = provider_key_for_model(req.model)
@@ -77,10 +98,8 @@ async def chat_completions(request: Request):
     cache_result = None
     if cacheable:
         params = {"temperature": req.temperature, "top_p": req.top_p}
-        cache_result = await asyncio.to_thread(
-            cache.query, req.model, system, params, conversation
-        )
-        if cache_result.hit is not None:
+        cache_result = await _safe_query(cache, req.model, system, params, conversation)
+        if cache_result is not None and cache_result.hit is not None:
             content = cache_result.hit.response
             if req.stream:
                 return StreamingResponse(
@@ -89,8 +108,7 @@ async def chat_completions(request: Request):
                     headers={"X-Cache": "HIT"},
                 )
             return JSONResponse(
-                completion_response(req.model, content, cached=True),
-                headers={"X-Cache": "HIT"},
+                completion_response(req.model, content), headers={"X-Cache": "HIT"}
             )
 
     if req.stream:
@@ -100,12 +118,15 @@ async def chat_completions(request: Request):
             headers={"X-Cache": "MISS"},
         )
 
-    response = await provider.complete(req)
+    try:
+        response = await provider.complete(req)
+    except _PROVIDER_ERRORS as exc:
+        logger.error("provider '%s' failed: %s", key, exc)
+        raise HTTPException(status_code=502, detail="Upstream provider error.")
+
     text = extract_text(response)
-    if cacheable and text:
-        await asyncio.to_thread(
-            cache.store, cache_result.namespace, cache_result.vector, conversation, text
-        )
+    if cacheable and cache_result is not None and text:
+        await _safe_store(cache, cache_result.namespace, cache_result.vector, conversation, text)
     return JSONResponse(response, headers={"X-Cache": "MISS"})
 
 
@@ -122,14 +143,19 @@ async def _stream_and_store(provider, req, cache, cache_result, conversation):
     cid = new_completion_id()
     buffer: list[str] = []
     yield sse(chunk(cid, req.model, {"role": "assistant"}))
-    async for delta in provider.stream(req):
-        buffer.append(delta)
-        yield sse(chunk(cid, req.model, {"content": delta}))
+    try:
+        async for delta in provider.stream(req):
+            buffer.append(delta)
+            yield sse(chunk(cid, req.model, {"content": delta}))
+    except _PROVIDER_ERRORS as exc:
+        logger.error("provider stream failed: %s", exc)
+        yield sse({"error": {"message": "Upstream provider error.", "type": "upstream_error"}})
+        yield SSE_DONE
+        return
+
     yield sse(chunk(cid, req.model, {}, finish_reason="stop"))
     yield SSE_DONE
 
     text = "".join(buffer)
     if cache is not None and cache_result is not None and text:
-        await asyncio.to_thread(
-            cache.store, cache_result.namespace, cache_result.vector, conversation, text
-        )
+        await _safe_store(cache, cache_result.namespace, cache_result.vector, conversation, text)

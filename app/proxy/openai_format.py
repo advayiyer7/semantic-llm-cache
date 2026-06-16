@@ -7,6 +7,17 @@ import time
 import uuid
 
 
+def text_of(content) -> str:
+    """Coerce OpenAI message content (string or content-block list) to text."""
+    if isinstance(content, list):
+        return "".join(
+            part.get("text", "")
+            for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+        )
+    return content or ""
+
+
 def new_completion_id() -> str:
     return f"chatcmpl-{uuid.uuid4().hex[:24]}"
 
@@ -15,12 +26,11 @@ def completion_response(
     model: str,
     content: str,
     *,
-    cached: bool = False,
     finish_reason: str = "stop",
     usage: dict | None = None,
     completion_id: str | None = None,
 ) -> dict:
-    """A non-streaming `chat.completion` body."""
+    """A non-streaming `chat.completion` body (cache status is in the X-Cache header)."""
     return {
         "id": completion_id or new_completion_id(),
         "object": "chat.completion",
@@ -34,7 +44,6 @@ def completion_response(
             }
         ],
         "usage": usage or {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        "x_cache": "hit" if cached else "miss",
     }
 
 

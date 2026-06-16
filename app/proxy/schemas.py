@@ -6,7 +6,7 @@ field we don't model is preserved and forwarded to the provider untouched.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChatMessage(BaseModel):
@@ -19,8 +19,9 @@ class ChatMessage(BaseModel):
 class ChatCompletionRequest(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    model: str
-    messages: list[ChatMessage]
+    # Bounded + charset-constrained so it's safe to hash, log, and forward.
+    model: str = Field(..., min_length=1, max_length=256, pattern=r"^[A-Za-z0-9._:\-/]+$")
+    messages: list[ChatMessage] = Field(..., min_length=1)
     temperature: float | None = None
     top_p: float | None = None
     max_tokens: int | None = None
