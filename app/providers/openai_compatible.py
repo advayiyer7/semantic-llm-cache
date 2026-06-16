@@ -12,7 +12,7 @@ from typing import AsyncIterator
 
 import httpx
 
-from app.proxy.schemas import ChatCompletionRequest
+from app.proxy.schemas import PROXY_ONLY_FIELDS, ChatCompletionRequest
 
 _TIMEOUT = httpx.Timeout(120.0, connect=10.0)
 
@@ -30,9 +30,7 @@ class OpenAICompatibleProvider:
 
     def _payload(self, req: ChatCompletionRequest, stream: bool) -> dict:
         # Drop proxy-only extension fields so they never reach the provider.
-        body = req.model_dump(
-            exclude_none=True, exclude={"stream", "cache_profile", "cache_ttl"}
-        )
+        body = req.model_dump(exclude_none=True, exclude={"stream"} | PROXY_ONLY_FIELDS)
         body["stream"] = stream
         return body
 

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     ollama_base_url: str = "http://localhost:11434"
 
+    # Optional: when set, /admin/* endpoints require a matching X-Admin-Key header.
+    admin_api_key: str | None = None
+
     # Redis (vector store + cache)
     redis_url: str = "redis://localhost:6379"
     index_name: str = "llmcache"
@@ -33,6 +36,7 @@ class Settings(BaseSettings):
     default_ttl_seconds: int = 3600
     short_ttl_seconds: int = 300       # time-sensitive / strict profile
     long_ttl_seconds: int = 86400      # stable / relaxed profile
+    max_ttl_seconds: int = 604800      # hard ceiling for any caller TTL override (7d)
     # Temperature bands that drive the inferred cache profile.
     deterministic_temperature_max: float = 0.3   # at/below -> relaxed (looser match OK)
     creative_temperature_min: float = 0.8        # at/above -> no caching

@@ -54,5 +54,8 @@ def decide(
     if profile == "off":
         return CacheDecision(cacheable=False, threshold=0.0, ttl=0, profile="off")
     threshold = PROFILE_THRESHOLDS[profile]
-    ttl = ttl_override or _ttl_for_tier(PROFILE_TTL_TIER[profile], settings)
+    ttl = ttl_override if ttl_override is not None else _ttl_for_tier(
+        PROFILE_TTL_TIER[profile], settings
+    )
+    ttl = min(ttl, settings.max_ttl_seconds)  # clamp any caller override
     return CacheDecision(cacheable=True, threshold=threshold, ttl=ttl, profile=profile)

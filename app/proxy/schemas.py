@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# Proxy-only fields — the single source of truth for what gets stripped before
+# a request is forwarded to a provider.
+PROXY_ONLY_FIELDS: frozenset[str] = frozenset({"cache_profile", "cache_ttl"})
+
 
 class ChatMessage(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -30,4 +34,4 @@ class ChatCompletionRequest(BaseModel):
 
     # Proxy extensions (stripped before forwarding to the provider).
     cache_profile: str | None = None  # strict | balanced | relaxed | off
-    cache_ttl: int | None = Field(default=None, ge=1)
+    cache_ttl: int | None = Field(default=None, ge=1, le=2_592_000)  # ≤ 30 days

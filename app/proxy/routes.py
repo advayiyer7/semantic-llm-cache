@@ -58,7 +58,7 @@ def _split_messages(messages) -> tuple[str | None, str]:
 
 
 def _flight_key(namespace: str, conversation: str) -> str:
-    digest = hashlib.sha256(conversation.encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.sha256(conversation.encode("utf-8")).hexdigest()[:32]
     return f"{namespace}:{digest}"
 
 
@@ -155,6 +155,11 @@ async def chat_completions(request: Request):
     if not cacheable:
         response = await _provider_complete(provider, req, key)
         return JSONResponse(response, headers={**base_headers, "X-Cache": "BYPASS"})
+
+    if cache_result is None:
+        # Cache query failed (e.g. Redis blip) — serve from provider, don't store.
+        response = await _provider_complete(provider, req, key)
+        return JSONResponse(response, headers={**base_headers, "X-Cache": "MISS"})
 
     # Cacheable miss — collapse concurrent identical requests.
     flight = _flight_key(cache_result.namespace, conversation)

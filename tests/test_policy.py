@@ -12,8 +12,15 @@ def test_infer_profile_from_temperature():
     assert infer_profile(None, S) == "balanced"
     assert infer_profile(0.0, S) == "relaxed"
     assert infer_profile(0.2, S) == "relaxed"
+    assert infer_profile(0.3, S) == "relaxed"   # boundary: <= max
     assert infer_profile(0.5, S) == "balanced"
+    assert infer_profile(0.8, S) == "off"       # boundary: >= min
     assert infer_profile(0.9, S) == "off"
+
+
+def test_ttl_override_is_clamped_to_max():
+    d = decide(None, "balanced", 10**9, S)
+    assert d.ttl == S.max_ttl_seconds
 
 
 def test_decide_relaxed_uses_low_threshold_and_long_ttl():
