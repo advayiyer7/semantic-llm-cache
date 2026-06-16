@@ -6,6 +6,60 @@ cutting API cost and latency.
 
 It mirrors the OpenAI API, so adopting it means changing one base URL.
 
+> **On a 2,000-request load test: P95 latency 102 ms cached vs 5.7 s uncached (98% reduction), 0 errors, exact-repeat hits 100%, paraphrase recall 93%** — fully local, $0 API cost. ([honest precision caveat below](#load-test-results).)
+
+## Architecture
+
+```mermaid
+flowchart LR
+    app["Your app<br/>(one base-URL change)"] -->|POST /v1/chat/completions| proxy["Semantic Cache Proxy<br/>(FastAPI)"]
+    proxy -->|1. embed prompt| emb["Embedder<br/>OpenAI or local fastembed"]
+    proxy -->|2. vector search| redis[("Redis Stack<br/>RedisVL + TTL")]
+    redis -->|similarity >= threshold| hit{{"HIT -> cached response<br/>(~instant)"}}
+    proxy -.->|MISS: single-flight| llm["OpenAI / Anthropic / Ollama"]
+    llm -.->|stream + store| redis
+    proxy --> metrics["/metrics"] --> prom["Prometheus"] --> graf["Grafana"]
+    hit --> app
+    llm -.-> app
+```
+
+## See it in 30 seconds
+
+With the proxy running (see [Setup](#setup)), `uv run python scripts/demo.py`:
+
+```text
+  [MISS]    3530.9 ms   fresh question
+           prompt: What is the capital of France?
+           answer: The capital of France is Paris.
+
+  [HIT ]      20.8 ms   exact repeat
+           answer: The capital of France is Paris.
+
+  [HIT ]      18.6 ms   paraphrase - different words, same meaning
+           prompt: Can you tell me France's capital city?
+           answer: The capital of France is Paris.        <- 190x faster, different wording
+
+  [MISS]     846.7 ms   unrelated question
+           prompt: Write a one-line haiku about the ocean.
+```
+
+A differently-worded question gets the cached answer; an unrelated one correctly misses.
+
+## Why I built it
+
+Every company running LLMs at scale pays for the same questions over and over, and
+plain caching can't help — *"What's the capital of France?"* and *"France's capital
+city?"* are different strings but the same request. This is the infrastructure that
+catches that: a drop-in proxy that caches **semantically**, cutting redundant spend
+and latency without touching the calling app.
+
+The interesting finding: a naive hit-rate looks great, but a semantic cache can serve
+*wrong* answers if the threshold is too loose. I built a precision harness and found
+that **pairwise evaluation overstates real precision at scale** — operationally each
+prompt is matched against the nearest of hundreds of cached vectors, not one — so the
+real lever is the embedding model, not just the threshold. The numbers below are
+reported with that caveat, not hidden by it.
+
 ## Status
 
 | Phase | Scope | State |
@@ -16,7 +70,7 @@ It mirrors the OpenAI API, so adopting it means changing one base URL.
 | 3 | Cache policies & eviction | ✅ done |
 | 4 | Monitoring & analytics | ✅ done |
 | 5 | Containerize & load test | ✅ done |
-| 6 | Portfolio polish | ⬜ next |
+| 6 | Portfolio polish | ✅ done |
 
 See [PLAN.md](PLAN.md) for the full build plan.
 
