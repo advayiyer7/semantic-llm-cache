@@ -1,0 +1,26 @@
+{"query": "What is the capital of France?", "candidate": "Can you tell me France's capital city?", "should_hit": true}
+{"query": "How does a hash map work?", "candidate": "Explain how hash maps function internally.", "should_hit": true}
+{"query": "What is the time complexity of binary search?", "candidate": "How fast is binary search in big-O terms?", "should_hit": true}
+{"query": "Why is the sky blue?", "candidate": "What makes the sky appear blue during the day?", "should_hit": true}
+{"query": "What is a closure in JavaScript?", "candidate": "Explain JavaScript closures.", "should_hit": true}
+{"query": "How does HTTPS keep traffic private?", "candidate": "In simple terms, how does HTTPS protect data in transit?", "should_hit": true}
+{"query": "What is a race condition?", "candidate": "Define a race condition in concurrent programming.", "should_hit": true}
+{"query": "What is the difference between TCP and UDP?", "candidate": "Compare TCP versus UDP.", "should_hit": true}
+{"query": "What is a memory leak?", "candidate": "What does it mean for a program to leak memory?", "should_hit": true}
+{"query": "How does DNS resolve a domain name?", "candidate": "Walk me through DNS resolution of a hostname.", "should_hit": true}
+{"query": "What is the capital of France?", "candidate": "What is the capital of Italy?", "should_hit": false}
+{"query": "How does a hash map work?", "candidate": "How does a linked list work?", "should_hit": false}
+{"query": "What is the time complexity of binary search?", "candidate": "What is the time complexity of bubble sort?", "should_hit": false}
+{"query": "Why is the sky blue?", "candidate": "Why is the ocean salty?", "should_hit": false}
+{"query": "What is a closure in JavaScript?", "candidate": "What is a promise in JavaScript?", "should_hit": false}
+{"query": "How does HTTPS keep traffic private?", "candidate": "How does HTTP caching work?", "should_hit": false}
+{"query": "What is a race condition?", "candidate": "What is a design pattern?", "should_hit": false}
+{"query": "What is the difference between TCP and UDP?", "candidate": "What is the difference between SQL and NoSQL?", "should_hit": false}
+{"query": "What is a memory leak?", "candidate": "What is a stack overflow?", "should_hit": false}
+{"query": "How does DNS resolve a domain name?", "candidate": "How does a load balancer distribute traffic?", "should_hit": false}
+{"query": "What is photosynthesis?", "candidate": "What is inflation?", "should_hit": false}
+{"query": "How does a hash map work?", "candidate": "How does a vaccine work?", "should_hit": false}
+{"query": "Why is the sky blue?", "candidate": "Why is the grass green?", "should_hit": false}
+{"query": "What causes earthquakes?", "candidate": "What causes hurricanes?", "should_hit": false}
+{"query": "What is the capital of France?", "candidate": "What is the capital of Japan?", "should_hit": false}
+{"query": "Explain quicksort.", "candidate": "Explain mitosis.", "should_hit": false}

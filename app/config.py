@@ -30,11 +30,17 @@ class Settings(BaseSettings):
     index_prefix: str = "llmcache"
 
     # Embeddings
+    embedding_backend: str = "openai"  # "openai" | "local"
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1536
+    local_embedding_model: str = "BAAI/bge-small-en-v1.5"
 
-    # Cache policy
-    similarity_threshold: float = 0.95
+    # Cache policy — per-profile similarity thresholds (tune per embedding backend;
+    # local bge-small scores paraphrases lower than OpenAI, so use ~0.85 there).
+    similarity_threshold: float = 0.95  # engine fallback when no per-request threshold
+    threshold_strict: float = 0.98
+    threshold_balanced: float = 0.95
+    threshold_relaxed: float = 0.90
     default_ttl_seconds: int = 3600
     short_ttl_seconds: int = 300       # time-sensitive / strict profile
     long_ttl_seconds: int = 86400      # stable / relaxed profile

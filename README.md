@@ -15,15 +15,46 @@ It mirrors the OpenAI API, so adopting it means changing one base URL.
 | 2 | Drop-in proxy API (OpenAI contract, streaming, routing) | ✅ done |
 | 3 | Cache policies & eviction | ✅ done |
 | 4 | Monitoring & analytics | ✅ done |
-| 5 | Containerize & load test | ⬜ next |
-| 6 | Portfolio polish | ⬜ |
+| 5 | Containerize & load test | ✅ done |
+| 6 | Portfolio polish | ⬜ next |
 
 See [PLAN.md](PLAN.md) for the full build plan.
 
 ## Stack
 
-Python 3.11+ · FastAPI · OpenAI `text-embedding-3-small` · Redis Stack (RedisVL)
-· Prometheus + Grafana · Docker Compose. Dev/test chat provider: **Ollama** (free, local).
+Python 3.11+ · FastAPI · embeddings: OpenAI `text-embedding-3-small` **or** on-device
+`fastembed` (no key/GPU) · Redis Stack (RedisVL) · Prometheus + Grafana · Docker Compose.
+Chat providers: OpenAI / Anthropic / **Ollama** (free, local).
+
+## Load test results
+
+`uv run python -m loadtest.run --n 2000` against a documented 40/30/30
+(exact / paraphrase / unique) workload. Run **fully local** (on-device `bge-small`
+embeddings + Ollama `llama3.2:3b`, laptop CPU, 0 API cost):
+
+| Metric | Result |
+|---|---|
+| Requests / errors | 2,000 / 0 |
+| P95 latency — cached vs uncached | **102 ms vs 5.7 s (98% reduction)** |
+| Exact-repeat hits | 803 / 803 (100%) |
+| Paraphrase recall (true semantic hits) | 559 / 600 (93%) |
+| Unique false-hit rate @ 0.85 | 413 / 597 (**69%**) |
+
+**Honest precision finding.** The latency win is real, but at the 0.85 threshold the
+local `bge-small` model can't separate true paraphrases from structurally-similar but
+distinct prompts. The pairwise `eval/precision.py` sweep reports precision 1.0 at 0.85 —
+yet operationally each prompt is matched against the *nearest of hundreds* of stored
+vectors, so the real false-hit rate is 69%. **Pairwise precision overstates operational
+precision at index scale.** The lever is the embedding model: OpenAI `text-embedding-3-small`
+separates these cleanly; thresholds are configurable per backend (`THRESHOLD_BALANCED`).
+The harness exists so this is a data-driven call, not a guess.
+
+```bash
+uv sync --group local                                 # on-device embeddings, no key
+EMBEDDING_BACKEND=local uv run python -m eval.precision        # precision/recall sweep
+EMBEDDING_BACKEND=local THRESHOLD_BALANCED=0.85 uv run uvicorn app.main:app  # serve
+uv run python -m loadtest.run --n 2000                # load test → loadtest/results.json
+```
 
 ## Proxy usage
 

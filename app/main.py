@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.responses import StreamingResponse
 
-from app.cache.embedder import OpenAIEmbedder
+from app.cache.embedder import build_embedder
 from app.metrics.prometheus import record_request
 from app.cache.engine import SemanticCache
 from app.cache.store import CacheStore
@@ -60,28 +60,36 @@ async def lifespan(app: FastAPI):
     app.state.cache = None
 
     try:
-        store = CacheStore(
-            redis_url=settings.redis_url,
-            index_name=settings.index_name,
-            index_prefix=settings.index_prefix,
-            dims=settings.embedding_dim,
-        )
-        store.ensure_index()
-        app.state.store = store
-        if settings.openai_api_key:
-            cache = SemanticCache(
-                embedder=OpenAIEmbedder(settings),
+        embedder = build_embedder(settings)
+        if embedder is None:
+            logger.warning(
+                "No embedder (set OPENAI_API_KEY, or EMBEDDING_BACKEND=local) — "
+                "cache disabled (passthrough only)"
+            )
+        else:
+            store = CacheStore(
+                redis_url=settings.redis_url,
+                index_name=settings.index_name,
+                index_prefix=settings.index_prefix,
+                dims=embedder.dim,
+            )
+            store.ensure_index()
+            app.state.store = store
+            app.state.cache = SemanticCache(
+                embedder=embedder,
                 store=store,
                 threshold=settings.similarity_threshold,
                 default_ttl=settings.default_ttl_seconds,
             )
-            app.state.cache = cache
-            logger.info("Semantic cache enabled (threshold=%.2f)", settings.similarity_threshold)
-        else:
-            logger.warning("OPENAI_API_KEY not set — cache disabled (passthrough only)")
+            logger.info(
+                "Semantic cache enabled (backend=%s, dim=%d, threshold=%.2f)",
+                settings.embedding_backend,
+                embedder.dim,
+                settings.similarity_threshold,
+            )
     except Exception as exc:  # noqa: BLE001 - startup must stay resilient
         # Log the type only — the exception text can contain the Redis URL/creds.
-        logger.warning("Cache store unavailable at startup: %s", type(exc).__name__)
+        logger.warning("Cache unavailable at startup: %s", type(exc).__name__)
 
     yield
 

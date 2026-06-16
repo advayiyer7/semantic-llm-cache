@@ -1,0 +1,21 @@
+{
+  "requests": 2000,
+  "wall_seconds": 130.4,
+  "throughput_rps": 15.3,
+  "hit_rate": 0.887,
+  "errors": 0,
+  "latency_ms": {
+    "cached_p50": 31.7,
+    "cached_p95": 101.9,
+    "uncached_p50": 5171.8,
+    "uncached_p95": 5743.4
+  },
+  "estimated_cost_saved_usd": 0.11398,
+  "hits_by_kind": {
+    "unique": "413/597",
+    "paraphrase": "559/600",
+    "exact": "803/803"
+  },
+  "unique_false_hit_rate": 0.692,
+  "p95_latency_reduction_pct": 98.2
+}

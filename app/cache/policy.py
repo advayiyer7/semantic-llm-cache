@@ -13,9 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-PROFILE_THRESHOLDS = {"strict": 0.98, "balanced": 0.95, "relaxed": 0.90}
 PROFILE_TTL_TIER = {"strict": "short", "balanced": "default", "relaxed": "long"}
-VALID_PROFILES = set(PROFILE_THRESHOLDS) | {"off"}
+VALID_PROFILES = set(PROFILE_TTL_TIER) | {"off"}
 
 
 @dataclass(frozen=True)
@@ -32,6 +31,14 @@ def _ttl_for_tier(tier: str, settings) -> int:
         "default": settings.default_ttl_seconds,
         "long": settings.long_ttl_seconds,
     }[tier]
+
+
+def _threshold_for(profile: str, settings) -> float:
+    return {
+        "strict": settings.threshold_strict,
+        "balanced": settings.threshold_balanced,
+        "relaxed": settings.threshold_relaxed,
+    }[profile]
 
 
 def infer_profile(temperature: float | None, settings) -> str:
@@ -53,7 +60,7 @@ def decide(
     profile = profile_override or infer_profile(temperature, settings)
     if profile == "off":
         return CacheDecision(cacheable=False, threshold=0.0, ttl=0, profile="off")
-    threshold = PROFILE_THRESHOLDS[profile]
+    threshold = _threshold_for(profile, settings)
     ttl = ttl_override if ttl_override is not None else _ttl_for_tier(
         PROFILE_TTL_TIER[profile], settings
     )
