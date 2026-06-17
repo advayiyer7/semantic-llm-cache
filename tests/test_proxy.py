@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.cache.engine import SemanticCache
 from app.main import app
-from tests.fakes import FakeProvider
+from tests.fakes import FailingStreamProvider, FakeProvider
 
 
 def _wire(store, embedder, provider, threshold=0.95):
@@ -120,6 +120,24 @@ def test_invalid_cache_profile_returns_400(store, embedder):
             },
         )
         assert resp.status_code == 400
+
+
+def test_streaming_provider_error_terminates_cleanly(store, embedder):
+    provider = FailingStreamProvider()
+    body = {
+        "model": "llama3.2",
+        "messages": [{"role": "user", "content": "x"}],
+        "stream": True,
+    }
+    with TestClient(app) as client:
+        _wire(store, embedder, provider)
+        with client.stream("POST", "/v1/chat/completions", json=body) as resp:
+            assert resp.status_code == 200
+            payload = "".join(resp.iter_text())
+    # Clean SDK-safe termination: finish_reason error + [DONE], no top-level error key.
+    assert "[DONE]" in payload
+    assert "error" in payload
+    assert '"error":' not in payload
 
 
 def test_unconfigured_provider_returns_503(store, embedder):

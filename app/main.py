@@ -67,11 +67,15 @@ async def lifespan(app: FastAPI):
                 "cache disabled (passthrough only)"
             )
         else:
+            # Scope the index + keyspace by embedding dimension so switching
+            # backends (openai 1536 <-> local 384) never collides with a warm
+            # index of a different dimension.
+            dim = embedder.dim
             store = CacheStore(
                 redis_url=settings.redis_url,
-                index_name=settings.index_name,
-                index_prefix=settings.index_prefix,
-                dims=embedder.dim,
+                index_name=f"{settings.index_name}_{dim}",
+                index_prefix=f"{settings.index_prefix}_{dim}",
+                dims=dim,
             )
             store.ensure_index()
             app.state.store = store

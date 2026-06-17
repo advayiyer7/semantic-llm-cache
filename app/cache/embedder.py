@@ -35,7 +35,13 @@ class OpenAIEmbedder:
 
         self._client = OpenAI(api_key=settings.openai_api_key)
         self._model = settings.embedding_model
-        self._dim = settings.embedding_dim
+        # Probe the model's real output dim so a misconfigured EMBEDDING_DIM can't
+        # silently corrupt the index (mirrors LocalEmbedder). Fall back to config.
+        try:
+            probe = self._client.embeddings.create(model=self._model, input="probe")
+            self._dim = len(probe.data[0].embedding)
+        except Exception:  # noqa: BLE001
+            self._dim = settings.embedding_dim
 
     @property
     def dim(self) -> int:

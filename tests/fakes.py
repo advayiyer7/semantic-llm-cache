@@ -6,10 +6,28 @@ import asyncio
 import hashlib
 from typing import AsyncIterator
 
+import httpx
 import numpy as np
 
 from app.proxy.openai_format import completion_response
 from app.proxy.schemas import ChatCompletionRequest
+
+
+class FailingStreamProvider:
+    """Raises a provider-class error as soon as streaming starts."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def complete(self, req: ChatCompletionRequest) -> dict:
+        self.calls += 1
+        raise httpx.RequestError("boom")
+
+    async def stream(self, req: ChatCompletionRequest) -> AsyncIterator[str]:
+        self.calls += 1
+        if False:  # make this an async generator
+            yield ""
+        raise httpx.RequestError("boom")
 
 
 class FakeProvider:
