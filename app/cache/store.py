@@ -18,6 +18,8 @@ from redisvl.schema import IndexSchema
 
 @dataclass(frozen=True)
 class CacheHit:
+    """A nearest-neighbour match: the stored prompt/response and its similarity."""
+
     prompt: str
     response: str
     similarity: float
@@ -31,6 +33,8 @@ class CacheStore:
         index_prefix: str,
         dims: int,
     ) -> None:
+        # Schema: a tag field for namespace isolation + a cosine HNSW vector field.
+        # Hash storage keeps each entry a single Redis hash with a native TTL.
         self._schema = IndexSchema.from_dict(
             {
                 "index": {
@@ -62,6 +66,7 @@ class CacheStore:
         self._index.create(overwrite=False)
 
     def ping(self) -> bool:
+        """True if Redis is reachable (drives the readiness probe)."""
         try:
             return bool(self._index.client.ping())
         except Exception:  # noqa: BLE001
@@ -96,6 +101,7 @@ class CacheStore:
         response: str,
         ttl: int,
     ) -> None:
+        """Insert one cache entry (embedding + prompt + response) under a TTL."""
         record = {
             "namespace": namespace,
             "prompt": prompt,

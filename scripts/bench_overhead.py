@@ -1,11 +1,12 @@
-"""Phase 1 critical-path overhead benchmark.
+"""Critical-path overhead benchmark.
 
-Measures the latency the cache adds to every request: embedding + vector search.
-This MUST stay well below provider latency, or cache misses go net-negative.
+Measures the latency the cache adds to every request — embedding + vector search.
+This must stay well below provider latency, or cache misses go net-negative.
 
-Requires a real OPENAI_API_KEY (in .env) and a running Redis Stack:
-    docker-compose up -d redis
-    uv run python scripts/bench_phase1.py
+Run with a Redis Stack up and any configured embedder (OpenAI or local):
+    docker compose up -d redis
+    uv run python scripts/bench_overhead.py
+    EMBEDDING_BACKEND=local uv run python scripts/bench_overhead.py
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from __future__ import annotations
 import statistics
 import time
 
-from app.cache.embedder import OpenAIEmbedder
+from app.cache.embedder import build_embedder
 from app.cache.store import CacheStore
 from app.config import get_settings
 
@@ -27,14 +28,19 @@ def _p95(samples: list[float]) -> float:
 
 def main() -> None:
     settings = get_settings()
+    embedder = build_embedder(settings)
+    if embedder is None:
+        raise SystemExit("No embedder configured (set OPENAI_API_KEY or EMBEDDING_BACKEND=local).")
+
+    # Match the app's dimension-scoped index naming so the benchmark hits the
+    # same index the proxy would use.
     store = CacheStore(
         settings.redis_url,
-        settings.index_name,
-        settings.index_prefix,
-        settings.embedding_dim,
+        f"{settings.index_name}_{embedder.dim}",
+        f"{settings.index_prefix}_{embedder.dim}",
+        embedder.dim,
     )
     store.ensure_index()
-    embedder = OpenAIEmbedder(settings)
 
     prompts = [f"sample query {i} about topic {i % 7}" for i in range(N)]
 

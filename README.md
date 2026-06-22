@@ -60,25 +60,36 @@ prompt is matched against the nearest of hundreds of cached vectors, not one —
 real lever is the embedding model, not just the threshold. The numbers below are
 reported with that caveat, not hidden by it.
 
-## Status
+## Features
 
-| Phase | Scope | State |
-|-------|-------|-------|
-| 0 | Repo scaffold, Docker stack, health endpoints | ✅ done |
-| 1 | Cache index + similarity engine | ✅ done |
-| 2 | Drop-in proxy API (OpenAI contract, streaming, routing) | ✅ done |
-| 3 | Cache policies & eviction | ✅ done |
-| 4 | Monitoring & analytics | ✅ done |
-| 5 | Containerize & load test | ✅ done |
-| 6 | Portfolio polish | ✅ done |
-
-See [PLAN.md](PLAN.md) for the full build plan.
+- **Drop-in OpenAI-compatible API** — point any OpenAI client at it by changing one base URL.
+- **Semantic caching** — embeds each prompt and serves cached answers for *reworded* queries, not just exact matches.
+- **Multi-provider routing** — by model name to OpenAI, Anthropic, or local Ollama, with full streaming (SSE).
+- **Adaptive cache policy** — per-request similarity thresholds and TTL tiers (from temperature or an explicit profile); creative/high-temperature requests bypass the cache.
+- **Single-flight** — collapses concurrent identical misses so only one reaches the provider (cache-stampede prevention).
+- **Pluggable embeddings** — OpenAI `text-embedding-3-small`, or on-device `fastembed` for a fully local, $0 setup.
+- **Observability** — Prometheus metrics + a provisioned Grafana dashboard.
+- **Evaluation tooling** — a precision/recall threshold sweep and a load-test harness with per-query-type breakdown.
 
 ## Stack
 
 Python 3.11+ · FastAPI · embeddings: OpenAI `text-embedding-3-small` **or** on-device
 `fastembed` (no key/GPU) · Redis Stack (RedisVL) · Prometheus + Grafana · Docker Compose.
 Chat providers: OpenAI / Anthropic / **Ollama** (free, local).
+
+## Project structure
+
+```text
+app/
+  proxy/       FastAPI routes, OpenAI-compatible schemas, SSE streaming, single-flight
+  cache/       embedding, vector store (RedisVL), namespace keys, policy, threshold tuner
+  providers/   OpenAI / Anthropic / Ollama adapters + model-based routing
+  metrics/     Prometheus metrics + near-miss analyzer
+loadtest/      workload generator + async load runner
+eval/          labeled dataset + precision/recall sweep
+monitoring/    Prometheus + Grafana provisioning
+tests/         unit + Redis integration + async concurrency
+```
 
 ## Load test results
 
@@ -194,10 +205,10 @@ docker-compose up -d redis      # integration tests need Redis Stack
 uv run pytest                   # unit tests run without it; integration tests skip if absent
 ```
 
-## Phase 1 overhead benchmark
+## Latency benchmark
 
 ```bash
-uv run python scripts/bench_phase1.py   # embed + search latency (needs OPENAI_API_KEY)
+uv run python scripts/bench_overhead.py   # per-request embed + vector-search overhead
 ```
 
 ## Security
@@ -212,4 +223,4 @@ uv run python scripts/bench_phase1.py   # embed + search latency (needs OPENAI_A
 | API | http://localhost:8000 |
 | RedisInsight | http://localhost:8001 |
 | Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000 (anon enabled; admin/admin) |
+| Grafana | http://localhost:3000 (set `GRAFANA_ADMIN_PASSWORD` in `.env`) |
